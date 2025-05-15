@@ -1,10 +1,10 @@
 # src/config.py
 
 # --- Data Settings ---
-# COCO_ANNOTATIONS_PATH = "data/coco/annotations/instances_train2017.json" # Adjust as needed
-# COCO_IMG_DIR_TRAIN = "data/coco/train2017/"
-# COCO_ANNOTATIONS_PATH_VAL = "data/coco/annotations/instances_val2017.json"
-# COCO_IMG_DIR_VAL = "data/coco/val2017/"
+COCO_ANNOTATIONS_PATH_TRAIN = "../data/coco/annotations/instances_train2017.json"
+COCO_IMG_DIR_TRAIN = "../data/coco/train2017/"
+COCO_ANNOTATIONS_PATH_VAL = "../data/coco/annotations/instances_val2017.json"
+COCO_IMG_DIR_VAL = "../data/coco/val2017/"
 
 # --- Model Input Settings ---
 CROP_IMG_HEIGHT = 224  # Height of the image cropped and resized for model input
