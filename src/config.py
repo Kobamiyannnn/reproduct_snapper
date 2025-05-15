@@ -1,10 +1,10 @@
 # src/config.py
 
 # --- Data Settings ---
-COCO_ANNOTATIONS_PATH_TRAIN = "../data/coco/annotations/instances_train2017.json"
-COCO_IMG_DIR_TRAIN = "../data/coco/train2017/"
-COCO_ANNOTATIONS_PATH_VAL = "../data/coco/annotations/instances_val2017.json"
-COCO_IMG_DIR_VAL = "../data/coco/val2017/"
+COCO_ANNOTATIONS_PATH_TRAIN = "data/coco/annotations/instances_train2017.json"
+COCO_IMG_DIR_TRAIN = "data/coco/train2017/"
+COCO_ANNOTATIONS_PATH_VAL = "data/coco/annotations/instances_val2017.json"
+COCO_IMG_DIR_VAL = "data/coco/val2017/"
 
 # --- Model Input Settings ---
 CROP_IMG_HEIGHT = 224  # Height of the image cropped and resized for model input
@@ -16,7 +16,7 @@ MODEL_FEATURE_MAP_DOWNSAMPLE_RATIO = (
 # --- Training Hyperparameters ---
 LEARNING_RATE = 1e-4
 EPOCHS = 50
-BATCH_SIZE = 16  # Adjust based on your GPU memory
+BATCH_SIZE = 64  # Adjust based on your GPU memory
 OPTIMIZER_TYPE = "Adam"  # "Adam", "SGD", etc.
 LOSS_FN_TYPE = "BCEWithLogitsLoss"
 

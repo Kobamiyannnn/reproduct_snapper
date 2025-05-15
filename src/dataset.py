@@ -4,11 +4,12 @@ import torch
 from torch.utils.data import Dataset
 from PIL import Image
 import torchvision.transforms.functional as TF
+import torchvision.transforms as T
 from pycocotools.coco import COCO  # COCO API
 
 # Assuming config.py, utils.py are in the same src directory or PYTHONPATH is set
-from . import config
-from . import utils
+import config
+import utils
 
 
 class CocoAdjustmentDataset(Dataset):
@@ -29,7 +30,7 @@ class CocoAdjustmentDataset(Dataset):
         # self.annotation_ids = [ann_id for ann_id in self.annotation_ids if self.coco.loadAnns(ann_id)[0]['area'] > some_threshold]
 
         # Pre-defined transformations for the image tensor
-        self.normalize_transform = TF.Normalize(
+        self.normalize_transform = T.transforms.Normalize(
             mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
         )
 
@@ -133,18 +134,10 @@ class CocoAdjustmentDataset(Dataset):
             )
             input_tensor = self.normalize_transform(input_tensor)
             targets = {
-                "top": torch.zeros(
-                    config.CROP_IMG_HEIGHT, device=torch.device(config.DEVICE)
-                ),
-                "bottom": torch.zeros(
-                    config.CROP_IMG_HEIGHT, device=torch.device(config.DEVICE)
-                ),
-                "left": torch.zeros(
-                    config.CROP_IMG_WIDTH, device=torch.device(config.DEVICE)
-                ),
-                "right": torch.zeros(
-                    config.CROP_IMG_WIDTH, device=torch.device(config.DEVICE)
-                ),
+                "top": torch.zeros(config.CROP_IMG_HEIGHT),
+                "bottom": torch.zeros(config.CROP_IMG_HEIGHT),
+                "left": torch.zeros(config.CROP_IMG_WIDTH),
+                "right": torch.zeros(config.CROP_IMG_WIDTH),
             }
             return input_tensor, targets
 
@@ -179,26 +172,21 @@ class CocoAdjustmentDataset(Dataset):
         final_gt_top = gt_y_min_rel_crop * scale_y
         final_gt_bottom = gt_y_max_rel_crop * scale_y
 
-        device = torch.device(config.DEVICE)
         target_left = utils.get_target_vector(
             max(0, min(final_gt_left, config.CROP_IMG_WIDTH - 1)),
             config.CROP_IMG_WIDTH,
-            device,
         )
         target_right = utils.get_target_vector(
             max(0, min(final_gt_right, config.CROP_IMG_WIDTH - 1)),
             config.CROP_IMG_WIDTH,
-            device,
         )
         target_top = utils.get_target_vector(
             max(0, min(final_gt_top, config.CROP_IMG_HEIGHT - 1)),
             config.CROP_IMG_HEIGHT,
-            device,
         )
         target_bottom = utils.get_target_vector(
             max(0, min(final_gt_bottom, config.CROP_IMG_HEIGHT - 1)),
             config.CROP_IMG_HEIGHT,
-            device,
         )
 
         targets = {
