@@ -15,7 +15,7 @@ MODEL_FEATURE_MAP_DOWNSAMPLE_RATIO = (
 
 # --- Training Hyperparameters ---
 LEARNING_RATE = 1e-4
-EPOCHS = 50
+EPOCHS = 5  # Default: 50
 BATCH_SIZE = 64  # Adjust based on your GPU memory
 OPTIMIZER_TYPE = "Adam"  # "Adam", "SGD", etc.
 LOSS_FN_TYPE = "BCEWithLogitsLoss"
