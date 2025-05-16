@@ -7,11 +7,21 @@ COCO_ANNOTATIONS_PATH_VAL = "data/coco/annotations/instances_val2017.json"
 COCO_IMG_DIR_VAL = "data/coco/val2017/"
 
 # --- Model Input Settings ---
-CROP_IMG_HEIGHT = 224  # Height of the image cropped and resized for model input
-CROP_IMG_WIDTH = 224  # Width of the image cropped and resized for model input
-MODEL_FEATURE_MAP_DOWNSAMPLE_RATIO = (
-    32  # ResNet50 typically has a downsample ratio of 32
+IMG_SIZE = (
+    224  # Size of the image cropped and resized for model input (height and width)
 )
+MEAN = [0.485, 0.456, 0.406]  # ImageNet mean for normalization
+STD = [0.229, 0.224, 0.225]  # ImageNet std for normalization
+
+# --- Model Architecture Settings ---
+BASE_MODEL_NAME = "resnet50"  # Backbone model name
+NUM_FEATURES = (
+    2048  # Number of features from backbone output (e.g., ResNet50's avgpool output)
+)
+DECODER_CHANNELS = [
+    512,
+    128,
+]  # List of hidden channels for the 1D Decoders, e.g. [512, 128] means two hidden Conv1D layers
 
 # --- Training Hyperparameters ---
 LEARNING_RATE = 1e-4
