@@ -15,18 +15,27 @@ def load_model(model_path, device):
     # configからモデルパラメータを読み込む想定だが、現状モデル保存時に構造も保存しているため、
     # 直接ロードできる。より柔軟にするにはconfigからモデル構造を決定する。
     model = BoundingBoxAdjustmentModel(
-        base_model_name=cfg.BASE_MODEL_NAME,
-        num_features=cfg.NUM_FEATURES,  # ResNet50 の場合、通常2048だが、pooling後の特徴量に合わせる
-        decoder_channels=cfg.DECODER_CHANNELS,
-        num_output_coords=cfg.IMG_SIZE,  # 辺の分類問題なので、画像のサイズが出力次元
+        image_height=cfg.IMG_SIZE[0]
+        if isinstance(cfg.IMG_SIZE, tuple)
+        else cfg.IMG_SIZE,
+        image_width=cfg.IMG_SIZE[1]
+        if isinstance(cfg.IMG_SIZE, tuple)
+        else cfg.IMG_SIZE,
+        resnet_out_channels=cfg.NUM_FEATURES,
+        # base_model_name, decoder_channels, num_output_coords は現在のモデル定義では使用されていません。
+        # これらは学習時の設定であり、モデル構造自体は保存された state_dict から復元されるか、
+        # モデルクラス内で固定されているため、推論時のモデル初期化では不要です。
+        # もしこれらのパラメータに基づいて動的にモデル構造が変わる場合は、
+        # BoundingBoxAdjustmentModel の __init__ を修正する必要があります。
     )
-    model.load_state_dict(torch.load(model_path, map_location=device))
+    checkpoint = torch.load(model_path, map_location=device, weights_only=False)
+    model.load_state_dict(checkpoint["model_state_dict"])
     model.to(device)
     model.eval()
     return model
 
 
-def preprocess_image(image_path, rough_bbox_coords, buffer_ratio, img_size, device):
+def preprocess_image(image_path, rough_bbox_xywh, buffer_ratio, img_size, device):
     """
     入力画像を前処理する。
     1. 画像を読み込む。
@@ -42,6 +51,14 @@ def preprocess_image(image_path, rough_bbox_coords, buffer_ratio, img_size, devi
     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     original_h, original_w = image.shape[:2]
 
+    # rough_bbox_xywh を [xmin, ymin, xmax, ymax] に変換
+    x_min_rough, y_min_rough, width_rough, height_rough = rough_bbox_xywh
+    rough_bbox_coords = [
+        x_min_rough,
+        y_min_rough,
+        x_min_rough + width_rough,
+        y_min_rough + height_rough,
+    ]
     xmin, ymin, xmax, ymax = rough_bbox_coords
     bbox_w = xmax - xmin
     bbox_h = ymax - ymin
@@ -134,7 +151,10 @@ def postprocess_predictions(predictions_logits, transform_info, img_size):
     # 今のモデルは (N, 4, img_size) を出力するので、そのまま使える
     # predictions_to_bboxes は各辺の最も確率の高いインデックスを返す
     pred_bboxes_on_resized_patch = predictions_to_bboxes(
-        predictions_logits, threshold=0.0
+        predictions_logits,
+        image_width=img_size,
+        image_height=img_size,
+        device=predictions_logits["top"].device,  # ロジットと同じデバイスを使用
     )  # (N, 4)
     pred_bbox_on_resized_patch = (
         pred_bboxes_on_resized_patch.squeeze(0).cpu().numpy()
@@ -164,26 +184,49 @@ def postprocess_predictions(predictions_logits, transform_info, img_size):
     ]
 
 
-def visualize_results(image_path, rough_bbox, adjusted_bbox, output_path=None):
+def visualize_results(
+    image_path, rough_bbox_xywh, adjusted_bbox_xyxy, output_path=None
+):
     """結果を可視化する"""
     image = cv2.imread(image_path)
     if image is None:
         print(f"Error: Image not found at {image_path} for visualization.")
         return
 
-    # ラフなBBoxを緑色で描画
+    # ラフなBBox (xywh) を (xyxy) に変換して緑色で描画
+    r_x, r_y, r_w, r_h = rough_bbox_xywh
     cv2.rectangle(
         image,
-        (rough_bbox[0], rough_bbox[1]),
-        (rough_bbox[2], rough_bbox[3]),
+        (r_x, r_y),
+        (r_x + r_w, r_y + r_h),
+        (0, 255, 0),  # Green
+        2,
+    )
+    cv2.putText(
+        image,
+        "Rough (Green)",
+        (r_x, r_y - 10 if r_y - 10 > 10 else r_y + r_h + 20),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.7,
         (0, 255, 0),
         2,
     )
-    # 調整後のBBoxを赤色で描画
+
+    # 調整後のBBoxを赤色で描画 (これは元々xyxy形式で渡される想定)
+    a_x1, a_y1, a_x2, a_y2 = adjusted_bbox_xyxy
     cv2.rectangle(
         image,
-        (adjusted_bbox[0], adjusted_bbox[1]),
-        (adjusted_bbox[2], adjusted_bbox[3]),
+        (a_x1, a_y1),
+        (a_x2, a_y2),
+        (0, 0, 255),  # Red
+        2,
+    )
+    cv2.putText(
+        image,
+        "Adjusted (Red)",
+        (a_x1, a_y1 - 10 if a_y1 - 10 > 10 else a_y1 + 30),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.7,
         (0, 0, 255),
         2,
     )
@@ -219,7 +262,7 @@ def main():
         "--bbox",
         type=str,
         required=True,
-        help="Rough bounding box coordinates as 'xmin,ymin,xmax,ymax'.",
+        help="Rough bounding box coordinates as 'x_min,y_min,width,height'.",
     )
     parser.add_argument(
         "--model_path",
@@ -261,12 +304,14 @@ def main():
     print(f"Using device: {device}")
 
     try:
-        rough_bbox_coords = [int(c) for c in args.bbox.split(",")]
-        if len(rough_bbox_coords) != 4:
-            raise ValueError("Bounding box must have 4 coordinates.")
+        rough_bbox_xywh = [int(c) for c in args.bbox.split(",")]
+        if len(rough_bbox_xywh) != 4:
+            raise ValueError(
+                "Bounding box must have 4 coordinates: x_min,y_min,width,height."
+            )
     except ValueError as e:
         print(
-            f"Error parsing bbox coordinates: {e}. Please use 'xmin,ymin,xmax,ymax' format."
+            f"Error parsing bbox coordinates: {e}. Please use 'x_min,y_min,width,height' format."
         )
         return
 
@@ -279,7 +324,7 @@ def main():
     try:
         img_tensor, transform_info = preprocess_image(
             args.image_path,
-            rough_bbox_coords,
+            rough_bbox_xywh,  # xywh 形式で渡す
             cfg_module.BUFFER_RATIO,  # config から取得
             cfg_module.IMG_SIZE,  # config から取得
             device,
@@ -303,13 +348,13 @@ def main():
         transform_info,
         cfg_module.IMG_SIZE,  # config から取得
     )
-    print(f"Rough BBox: {rough_bbox_coords}")
+    print(f"Rough BBox: {rough_bbox_xywh}")
     print(f"Adjusted BBox: {adjusted_bbox_coords}")
 
     # 5. 可視化
     print("Visualizing results...")
     visualize_results(
-        args.image_path, rough_bbox_coords, adjusted_bbox_coords, args.output_path
+        args.image_path, rough_bbox_xywh, adjusted_bbox_coords, args.output_path
     )
 
 
