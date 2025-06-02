@@ -50,3 +50,6 @@ SAVE_EVERY_N_EPOCHS = 5  # Save model every N epochs
 DEVICE = "cuda"  # "cuda" if GPU is available, else "cpu"
 NUM_WORKERS = 4  # For DataLoader, adjust based on your CPU cores
 RANDOM_SEED = 42
+
+# TensorBoard Log Directory
+LOG_DIR = "runs"  # TensorBoardのログが保存されるベースディレクトリ

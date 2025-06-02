@@ -6,6 +6,8 @@ from torch.utils.data import DataLoader
 import random
 import numpy as np
 import torch.multiprocessing as mp
+from torch.utils.tensorboard import SummaryWriter
+import time
 
 # Assuming config.py, models.py, dataset.py, utils.py are in the same src directory
 # or PYTHONPATH is correctly set.
@@ -25,7 +27,7 @@ def seed_everything(seed):
     torch.backends.cudnn.benchmark = False
 
 
-def train_one_epoch(model, dataloader, criterion, optimizer, device):
+def train_one_epoch(model, dataloader, criterion, optimizer, device, writer, epoch):
     model.train()
     epoch_loss = 0.0
     for i, (images, targets) in enumerate(dataloader):
@@ -48,24 +50,61 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device):
         total_loss.backward()
         optimizer.step()
 
-        epoch_loss += total_loss.item()
+        current_loss = total_loss.item()
+        epoch_loss += current_loss
+
+        if writer:
+            writer.add_scalar(
+                "Loss/train_batch", current_loss, epoch * len(dataloader) + i
+            )
 
         if (i + 1) % 100 == 0:  # Log every 100 batches
             print(
-                f"    Batch [{i + 1}/{len(dataloader)}], Batch Loss: {total_loss.item():.4f}"
+                f"    Batch [{i + 1}/{len(dataloader)}], Batch Loss: {current_loss:.4f}"
             )
 
-    return epoch_loss / len(dataloader)
+    avg_epoch_loss = epoch_loss / len(dataloader)
+    if writer:
+        writer.add_scalar("Loss/train_epoch", avg_epoch_loss, epoch)
+    return avg_epoch_loss
 
 
-def validate_one_epoch(model, dataloader, criterion, device, image_width, image_height):
+def validate_one_epoch(
+    model, dataloader, criterion, device, image_width, image_height, writer, epoch
+):
     model.eval()
     epoch_loss = 0.0
 
     all_iou_scores = []
     total_samples_for_dev = 0
-    sum_edge_dev_metrics = {}
-    sum_corner_dev_metrics = {}
+    sum_edge_dev_metrics = {
+        "avg_top_dev": 0.0,
+        "avg_bottom_dev": 0.0,
+        "avg_left_dev": 0.0,
+        "avg_right_dev": 0.0,
+        "frac_top_dev_le_1px": 0.0,
+        "frac_bottom_dev_le_1px": 0.0,
+        "frac_left_dev_le_1px": 0.0,
+        "frac_right_dev_le_1px": 0.0,
+        "frac_top_dev_le_3px": 0.0,
+        "frac_bottom_dev_le_3px": 0.0,
+        "frac_left_dev_le_3px": 0.0,
+        "frac_right_dev_le_3px": 0.0,
+    }
+    sum_corner_dev_metrics = {
+        "avg_l1_top_left": 0.0,
+        "avg_l1_top_right": 0.0,
+        "avg_l1_bottom_left": 0.0,
+        "avg_l1_bottom_right": 0.0,
+        "frac_l1_top_left_le_1px": 0.0,
+        "frac_l1_top_right_le_1px": 0.0,
+        "frac_l1_bottom_left_le_1px": 0.0,
+        "frac_l1_bottom_right_le_1px": 0.0,
+        "frac_l1_top_left_le_3px": 0.0,
+        "frac_l1_top_right_le_3px": 0.0,
+        "frac_l1_bottom_left_le_3px": 0.0,
+        "frac_l1_bottom_right_le_3px": 0.0,
+    }
 
     with torch.no_grad():
         for i, (images, targets_dict) in enumerate(dataloader):
@@ -140,28 +179,52 @@ def validate_one_epoch(model, dataloader, criterion, device, image_width, image_
     print(f"    Average Validation Loss: {avg_epoch_loss:.4f}")
     print(f"    Average IoU: {avg_iou:.4f}")
 
+    if writer:
+        writer.add_scalar("Loss/validation_epoch", avg_epoch_loss, epoch)
+        writer.add_scalar("IoU/validation", avg_iou, epoch)
+
     print("    Edge Deviance:")
     if total_samples_for_dev > 0:
         for key, summed_value in sum_edge_dev_metrics.items():
+            metric_val = summed_value / total_samples_for_dev
             if "frac" in key:
-                metric_val = summed_value / total_samples_for_dev
                 print(f"        {key}: {metric_val:.4f}")
             else:
-                metric_val = summed_value / total_samples_for_dev
                 print(f"        {key}: {metric_val:.4f} px")
+            if writer:
+                writer.add_scalar(
+                    f"EdgeDeviance/{key.replace('frac_', 'frac_le_')}",
+                    metric_val,
+                    epoch,
+                )
 
     print("    Corner Deviance:")
     if total_samples_for_dev > 0:
         for key, summed_value in sum_corner_dev_metrics.items():
+            metric_val = summed_value / total_samples_for_dev
             if "frac" in key:
-                metric_val = summed_value / total_samples_for_dev
                 print(f"        {key}: {metric_val:.4f}")
             else:
-                metric_val = summed_value / total_samples_for_dev
                 print(f"        {key}: {metric_val:.4f} px")
+            if writer:
+                writer.add_scalar(
+                    f"CornerDeviance/{key.replace('frac_', 'frac_le_')}",
+                    metric_val,
+                    epoch,
+                )
     print("    ------------------------")
 
-    return avg_epoch_loss, avg_iou
+    metrics = {
+        "avg_val_loss": avg_epoch_loss,
+        "avg_iou": avg_iou,
+    }
+    if total_samples_for_dev > 0:
+        for key, summed_value in sum_edge_dev_metrics.items():
+            metrics[f"edge_{key}"] = summed_value / total_samples_for_dev
+        for key, summed_value in sum_corner_dev_metrics.items():
+            metrics[f"corner_{key}"] = summed_value / total_samples_for_dev
+
+    return metrics
 
 
 def main():
@@ -180,6 +243,13 @@ def main():
     seed_everything(config.RANDOM_SEED)
     device = torch.device(config.DEVICE if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
+
+    # --- TensorBoard Writer ---
+    log_dir_name = f"run_{time.strftime('%Y%m%d-%H%M%S')}"
+    writer = SummaryWriter(os.path.join(config.LOG_DIR, log_dir_name))
+    print(
+        f"TensorBoard logs will be saved to: {os.path.join(config.LOG_DIR, log_dir_name)}"
+    )
 
     # --- Data Loading ---
     if (
@@ -251,8 +321,8 @@ def main():
 
     # --- Model, Loss, Optimizer ---
     model = BoundingBoxAdjustmentModel(
-        image_height=config.CROP_IMG_HEIGHT,
-        image_width=config.CROP_IMG_WIDTH,
+        image_height=config.IMG_SIZE,
+        image_width=config.IMG_SIZE,
     ).to(device)
     print("Model initialized.")
 
@@ -283,7 +353,7 @@ def main():
         print(f"\n--- Epoch {epoch}/{config.EPOCHS} ---")
 
         avg_train_loss = train_one_epoch(
-            model, train_dataloader, criterion, optimizer, device
+            model, train_dataloader, criterion, optimizer, device, writer, epoch
         )
         print(f"Epoch {epoch} - Average Training Loss: {avg_train_loss:.4f}")
 
@@ -291,31 +361,38 @@ def main():
         avg_val_iou = None
 
         if use_validation and val_dataloader:
-            avg_val_loss, avg_val_iou = validate_one_epoch(
+            print("Starting validation...")
+            val_metrics = validate_one_epoch(
                 model,
                 val_dataloader,
                 criterion,
                 device,
                 config.CROP_IMG_WIDTH,
                 config.CROP_IMG_HEIGHT,
+                writer,
+                epoch,
             )
+            avg_val_loss = val_metrics["avg_val_loss"]
+            avg_val_iou = val_metrics["avg_iou"]
 
-        if use_validation and avg_val_iou is not None and avg_val_iou > best_val_iou:
-            best_val_iou = avg_val_iou
-            checkpoint_path = os.path.join(config.CHECKPOINT_DIR, "best_model_iou.pth")
-            torch.save(
-                {
-                    "epoch": epoch,
-                    "model_state_dict": model.state_dict(),
-                    "optimizer_state_dict": optimizer.state_dict(),
-                    "loss": avg_val_loss,
-                    "iou": avg_val_iou,
-                },
-                checkpoint_path,
-            )
-            print(
-                f"Saved best model checkpoint (Val IoU: {best_val_iou:.4f}) to {checkpoint_path}"
-            )
+            if avg_val_iou > best_val_iou:
+                best_val_iou = avg_val_iou
+                checkpoint_path = os.path.join(
+                    config.CHECKPOINT_DIR, "best_model_iou.pth"
+                )
+                torch.save(
+                    {
+                        "epoch": epoch,
+                        "model_state_dict": model.state_dict(),
+                        "optimizer_state_dict": optimizer.state_dict(),
+                        "loss": avg_val_loss,
+                        "iou": avg_val_iou,
+                    },
+                    checkpoint_path,
+                )
+                print(
+                    f"Saved best model checkpoint (Val IoU: {best_val_iou:.4f}) to {checkpoint_path}"
+                )
 
         if epoch % config.SAVE_EVERY_N_EPOCHS == 0:
             checkpoint_path = os.path.join(
@@ -335,6 +412,8 @@ def main():
             print(f"Saved periodic model checkpoint to {checkpoint_path}")
 
     print("\nTraining finished.")
+    if writer:
+        writer.close()
 
 
 if __name__ == "__main__":

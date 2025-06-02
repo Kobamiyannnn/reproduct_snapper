@@ -130,20 +130,20 @@ class CocoAdjustmentDataset(Dataset):
                 f"Warning: Invalid crop for ann_id {ann_id}, img_id {img_info['id']}. Size: {actual_cropped_w}x{actual_cropped_h}. Cropping params: ({crop_x_min}, {crop_y_min}, {crop_x_max_inclusive + 1}, {crop_y_max_inclusive + 1})"
             )
             input_tensor = torch.zeros(
-                (3, config.CROP_IMG_HEIGHT, config.CROP_IMG_WIDTH)
+                (3, config.IMG_SIZE, config.IMG_SIZE)
             )
             input_tensor = self.normalize_transform(input_tensor)
             targets = {
-                "top": torch.zeros(config.CROP_IMG_HEIGHT),
-                "bottom": torch.zeros(config.CROP_IMG_HEIGHT),
-                "left": torch.zeros(config.CROP_IMG_WIDTH),
-                "right": torch.zeros(config.CROP_IMG_WIDTH),
+                "top": torch.zeros(config.IMG_SIZE),
+                "bottom": torch.zeros(config.IMG_SIZE),
+                "left": torch.zeros(config.IMG_SIZE),
+                "right": torch.zeros(config.IMG_SIZE),
             }
             return input_tensor, targets
 
         # 4. Resize cropped image to model's expected input size and convert to tensor
         resized_image_pil = TF.resize(
-            cropped_image_pil, (config.CROP_IMG_HEIGHT, config.CROP_IMG_WIDTH)
+            cropped_image_pil, (config.IMG_SIZE, config.IMG_SIZE)
         )
         input_tensor = TF.to_tensor(resized_image_pil)
         input_tensor = self.normalize_transform(
@@ -161,10 +161,10 @@ class CocoAdjustmentDataset(Dataset):
         gt_y_max_rel_crop = gt_y_max_orig - crop_y_min
 
         scale_x = (
-            config.CROP_IMG_WIDTH / actual_cropped_w if actual_cropped_w > 0 else 0
+            config.IMG_SIZE / actual_cropped_w if actual_cropped_w > 0 else 0
         )
         scale_y = (
-            config.CROP_IMG_HEIGHT / actual_cropped_h if actual_cropped_h > 0 else 0
+            config.IMG_SIZE / actual_cropped_h if actual_cropped_h > 0 else 0
         )
 
         final_gt_left = gt_x_min_rel_crop * scale_x
@@ -173,20 +173,20 @@ class CocoAdjustmentDataset(Dataset):
         final_gt_bottom = gt_y_max_rel_crop * scale_y
 
         target_left = utils.get_target_vector(
-            max(0, min(final_gt_left, config.CROP_IMG_WIDTH - 1)),
-            config.CROP_IMG_WIDTH,
+            max(0, min(final_gt_left, config.IMG_SIZE - 1)),
+            config.IMG_SIZE,
         )
         target_right = utils.get_target_vector(
-            max(0, min(final_gt_right, config.CROP_IMG_WIDTH - 1)),
-            config.CROP_IMG_WIDTH,
+            max(0, min(final_gt_right, config.IMG_SIZE - 1)),
+            config.IMG_SIZE,
         )
         target_top = utils.get_target_vector(
-            max(0, min(final_gt_top, config.CROP_IMG_HEIGHT - 1)),
-            config.CROP_IMG_HEIGHT,
+            max(0, min(final_gt_top, config.IMG_SIZE - 1)),
+            config.IMG_SIZE,
         )
         target_bottom = utils.get_target_vector(
-            max(0, min(final_gt_bottom, config.CROP_IMG_HEIGHT - 1)),
-            config.CROP_IMG_HEIGHT,
+            max(0, min(final_gt_bottom, config.IMG_SIZE - 1)),
+            config.IMG_SIZE,
         )
 
         targets = {
