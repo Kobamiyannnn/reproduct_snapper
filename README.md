@@ -49,11 +49,12 @@
 
 ## 評価指標
 
-モデルの性能は以下の指標で評価されます。
+モデルの性能は以下の指標で評価され、TensorBoardで確認できます。
 
 *   **IoU (Intersection over Union)**: 予測されたバウンディングボックスと正解のバウンディングボックスの重なり具合。
 *   **Edge Deviance**: 予測された各辺と正解の各辺のピクセル単位での平均的なずれ。また、ずれが特定の閾値（例: 1ピクセル、3ピクセル）以下である割合。
 *   **Corner Deviance**: 予測された各頂点と正解の各頂点のピクセル単位での平均的なL1距離。また、L1距離が特定の閾値（例: 1ピクセル、3ピクセル）以下である割合。
+*   **学習/検証損失**: 各エポックにおける学習損失と検証損失。
 
 ## プロジェクト構成
 
@@ -65,8 +66,9 @@ reproduct_snapper/
 │       ├── annotations/
 │       └── train2017/
 │       └── val2017/
+├── runs/               # TensorBoard のログファイル
 ├── src/                # ソースコード
-│   ├── config.py       # 設定ファイル (学習率、パスなど)
+│   ├── config.py       # 設定ファイル (学習率、パス、LOG_DIRなど)
 │   ├── dataset.py      # データセットクラス (CocoAdjustmentDataset)
 │   ├── models.py       # モデル定義 (BoundingBoxAdjustmentModel)
 │   ├── train.py        # 学習・検証スクリプト
@@ -87,15 +89,27 @@ reproduct_snapper/
     # uv pip install -r requirements.txt
     ```
     `pycocotools` のインストールには、環境に応じて追加のステップが必要になる場合があります。
+    TensorBoardを使用するために `tensorboard` パッケージもインストールされていることを確認してください。
+    ```bash
+    pip install tensorboard
+    ```
 
 2.  **データセットの準備**:
     *   MS COCOデータセットをダウンロードし、`data/coco` ディレクトリ以下に配置します (上記ディレクトリ構成参照)。
-    *   `src/config.py` 内のデータセットパスを適切に設定します。
+    *   `src/config.py` 内のデータセットパス (`COCO_ANNOTATIONS_PATH_TRAIN`, `COCO_IMG_DIR_TRAIN` など) を適切に設定します。
 
-3.  **学習の実行**:
-    ```bash
-    python src/train.py
-    # または uv を使用する場合
-    # uv run src/train.py
-    ```
-    学習設定は `src/config.py` で調整可能です。
+3.  **学習の実行と監視**:
+    *   まず、別のターミナルでTensorBoardを起動します。
+        ```bash
+        tensorboard --logdir runs
+        ```
+        （`runs` の部分は `src/config.py` の `LOG_DIR` で指定したディレクトリ名に合わせてください。）
+        その後、ブラウザで表示されたURL（通常は `http://localhost:6006/`）にアクセスします。
+
+    *   学習スクリプトを実行します。
+        ```bash
+        python src/train.py
+        # または uv を使用する場合
+        # uv run src/train.py
+        ```
+    学習設定は `src/config.py` で調整可能です。学習の進捗（損失、IoUなど）はTensorBoardでリアルタイムに確認できます。
