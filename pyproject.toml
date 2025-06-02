@@ -7,6 +7,7 @@ requires-python = ">=3.12"
 dependencies = [
     "opencv-python>=4.11.0.86",
     "pycocotools>=2.0.8",
+    "tensorboard>=2.19.0",
     "torch>=2.7.0",
     "torchvision>=0.22.0",
 ]
