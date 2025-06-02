@@ -65,20 +65,23 @@ reproduct_snapper/
 ├── checkpoints/        # 学習済みモデルのチェックポイント
 ├── data/               # データセット (例: COCO)
 │   └── coco/
-│       ├── annotations/
-│       └── train2017/
-│       └── val2017/
+│       ├── annotations/  # COCOアノテーションファイル
+│       ├── train2017/    # COCO学習用画像
+│       └── val2017/      # COCO検証用画像
+├── resources/          # README用の画像や論文PDFなど
+├── results/            # 推論結果の出力画像などを保存 (オプション)
 ├── runs/               # TensorBoard のログファイル
 ├── src/                # ソースコード
 │   ├── config.py       # 設定ファイル (学習率、パス、LOG_DIRなど)
 │   ├── dataset.py      # データセットクラス (CocoAdjustmentDataset)
+│   ├── inference.py    # 推論実行スクリプト
 │   ├── models.py       # モデル定義 (BoundingBoxAdjustmentModel)
 │   ├── train.py        # 学習・検証スクリプト
 │   └── utils.py        # ユーティリティ関数 (Jittering, 評価指標など)
 ├── .gitignore
 ├── pyproject.toml      # Poetry / uv 用の設定ファイル
 ├── README.md           # このファイル
-├── requirements.txt    # 依存パッケージリスト
+├── requirements.txt    # 依存パッケージリスト (pip用)
 └── uv.lock             # uv 用のロックファイル
 ```
 
@@ -115,3 +118,24 @@ reproduct_snapper/
         # uv run src/train.py
         ```
     学習設定は `src/config.py` で調整可能です。学習の進捗（損失、IoUなど）はTensorBoardでリアルタイムに確認できます。
+
+4.  **推論の実行 (学習済みモデルを使用)**:
+    学習済みのモデルを使用して、単一の画像に対してバウンディングボックス調整を行うには `src/inference.py` を使用します。
+
+    **コマンド例**:
+    ```bash
+    python src/inference.py \
+        --image_path "path/to/your/image.jpg" \
+        --bbox "x_min,y_min,width,height" \
+        --model_path "checkpoints/your_trained_model.pth" \
+        --output_path "results/output_image.jpg"
+    ```
+
+    **引数の説明**:
+    *   `--image_path`: 入力画像のパス。
+    *   `--bbox`: ラフなバウンディングボックスの座標を `x_min,y_min,width,height` の形式で指定 (カンマ区切り、スペースなし)。
+    *   `--model_path`: 学習済みモデルのチェックポイントファイル (`.pth`) のパス。
+    *   `--output_path` (オプション): 調整後のバウンディングボックスが描画された画像の保存先。指定しない場合はウィンドウに表示されます。
+    *   `--config_path` (オプション): デフォルト以外の設定ファイルを使用する場合に指定します (現在はデフォルト設定を使用)。
+
+    `results/` ディレクトリは、推論結果の画像を保存するために使用できます。必要に応じて作成してください。
