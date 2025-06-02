@@ -1,6 +1,8 @@
 # Bounding Box Adjustment Model (Snapper再現プロジェクト)
 
-このプロジェクトは、論文「Snapper: Accelerating Bounding Box Annotation with A Generic Object-Agnostic Bounding Box Adjustment Model」に登場する Bounding Box Adjustment Model の再現実装を目指すものです。
+このプロジェクトは、論文「[Snapper: Accelerating Bounding Box Annotation with A Generic Object-Agnostic Bounding Box Adjustment Model](/resources/snapper-accelerating-bounding-box-annotation-in-object-detection-tasks-with-find-and-snap-tooling.pdf)」に登場する Bounding Box Adjustment Model の再現実装を目指すものです。
+
+![](/resources/figure-3_snapper-bounding-box-adjustment-model-design.png)
 
 ## 概要
 
