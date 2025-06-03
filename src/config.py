@@ -24,11 +24,13 @@ DECODER_CHANNELS = [
 ]  # List of hidden channels for the 1D Decoders, e.g. [512, 128] means two hidden Conv1D layers
 
 # --- Training Hyperparameters ---
-LEARNING_RATE = 1e-4
-EPOCHS = 5  # Default: 50
-BATCH_SIZE = 64  # Adjust based on your GPU memory
+LEARNING_RATE = 2e-4
+EPOCHS = 20  # Default: 50
+BATCH_SIZE = 128  # Increased batch size
 OPTIMIZER_TYPE = "Adam"  # "Adam", "SGD", etc.
 LOSS_FN_TYPE = "BCEWithLogitsLoss"
+WARMUP_EPOCHS = 5  # Epochs for learning rate warmup
+LR_SCHEDULER_ETA_MIN = 1e-6  # Minimum learning rate for CosineAnnealingLR
 
 # --- Jittering and Cropping Settings ---
 CENTER_JITTER_RATIO = 0.1  # Max percentage of bbox dimension to shift the center

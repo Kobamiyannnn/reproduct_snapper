@@ -8,6 +8,7 @@ import numpy as np
 import torch.multiprocessing as mp
 from torch.utils.tensorboard import SummaryWriter
 import time
+import torch.optim.lr_scheduler as lr_scheduler
 
 # Assuming config.py, models.py, dataset.py, utils.py are in the same src directory
 # or PYTHONPATH is correctly set.
@@ -30,6 +31,9 @@ def seed_everything(seed):
 def train_one_epoch(model, dataloader, criterion, optimizer, device, writer, epoch):
     model.train()
     epoch_loss = 0.0
+
+    scaler = torch.amp.GradScaler(device=device)
+
     for i, (images, targets) in enumerate(dataloader):
         images = images.to(device)
         target_top = targets["top"].to(device)
@@ -38,17 +42,19 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device, writer, epo
         target_right = targets["right"].to(device)
 
         optimizer.zero_grad()
-        predictions = model(images)  # These are logits
+        with torch.amp.autocast(device_type=device.type):
+            preds_top, preds_bottom, preds_left, preds_right = model(images)
 
-        loss_t = criterion(predictions["top"], target_top)
-        loss_b = criterion(predictions["bottom"], target_bottom)
-        loss_l = criterion(predictions["left"], target_left)
-        loss_r = criterion(predictions["right"], target_right)
+            loss_top = criterion(preds_top, target_top.float())
+            loss_bottom = criterion(preds_bottom, target_bottom.float())
+            loss_left = criterion(preds_left, target_left.float())
+            loss_right = criterion(preds_right, target_right.float())
 
-        total_loss = loss_t + loss_b + loss_l + loss_r
+            total_loss = loss_top + loss_bottom + loss_left + loss_right
 
-        total_loss.backward()
-        optimizer.step()
+        scaler.scale(total_loss).backward()
+        scaler.step(optimizer)
+        scaler.update()
 
         current_loss = total_loss.item()
         epoch_loss += current_loss
@@ -110,21 +116,17 @@ def validate_one_epoch(
         for i, (images, targets_dict) in enumerate(dataloader):
             images = images.to(device)
 
-            predictions_logits = model(images)
+            preds_top, preds_bottom, preds_left, preds_right = model(images)
 
-            loss_t = criterion(
-                predictions_logits["top"], targets_dict["top"].to(device)
+            loss_top = criterion(preds_top, targets_dict["top"].to(device).float())
+            loss_bottom = criterion(
+                preds_bottom, targets_dict["bottom"].to(device).float()
             )
-            loss_b = criterion(
-                predictions_logits["bottom"], targets_dict["bottom"].to(device)
+            loss_left = criterion(preds_left, targets_dict["left"].to(device).float())
+            loss_right = criterion(
+                preds_right, targets_dict["right"].to(device).float()
             )
-            loss_l = criterion(
-                predictions_logits["left"], targets_dict["left"].to(device)
-            )
-            loss_r = criterion(
-                predictions_logits["right"], targets_dict["right"].to(device)
-            )
-            total_loss = loss_t + loss_b + loss_l + loss_r
+            total_loss = loss_top + loss_bottom + loss_left + loss_right
             epoch_loss += total_loss.item()
 
             if (i + 1) % 50 == 0:
@@ -133,7 +135,15 @@ def validate_one_epoch(
                 )
 
             pred_bboxes_batch = utils.predictions_to_bboxes(
-                predictions_logits, image_width, image_height, device
+                {
+                    "top": preds_top,
+                    "bottom": preds_bottom,
+                    "left": preds_left,
+                    "right": preds_right,
+                },
+                image_width,
+                image_height,
+                device,
             )
             gt_bboxes_batch = utils.get_gt_bboxes_from_targets(
                 targets_dict, image_width, image_height, device
@@ -320,9 +330,11 @@ def main():
         use_validation = False
 
     # --- Model, Loss, Optimizer ---
+    class Config:
+        IMAGE_SIZE = config.IMG_SIZE
+
     model = BoundingBoxAdjustmentModel(
-        image_height=config.IMG_SIZE,
-        image_width=config.IMG_SIZE,
+        config=Config(),
     ).to(device)
     print("Model initialized.")
 
@@ -340,6 +352,41 @@ def main():
         raise ValueError(f"Unsupported optimizer type: {config.OPTIMIZER_TYPE}")
     print(f"Using optimizer: {config.OPTIMIZER_TYPE} with LR: {config.LEARNING_RATE}")
 
+    # --- Learning Rate Scheduler ---
+    # Scheduler 1: Linear Warmup
+    scheduler1 = lr_scheduler.LinearLR(
+        optimizer,
+        start_factor=0.1,  # Start LR will be 0.1 * config.LEARNING_RATE
+        end_factor=1.0,
+        total_iters=config.WARMUP_EPOCHS,
+    )
+    # Scheduler 2: Cosine Annealing
+    cosine_t_max = config.EPOCHS - config.WARMUP_EPOCHS
+    if cosine_t_max <= 0:
+        # Handle cases where WARMUP_EPOCHS >= EPOCHS, though unlikely with proper config
+        print(
+            f"Warning: cosine_t_max ({cosine_t_max}) is not positive. CosineAnnealingLR might not behave as expected."
+        )
+        print("Ensure EPOCHS > WARMUP_EPOCHS in config.")
+        # Default to at least 1 epoch for cosine annealing if warmup covers all/most epochs
+        cosine_t_max = max(1, config.EPOCHS // 2)
+
+    scheduler2 = lr_scheduler.CosineAnnealingLR(
+        optimizer,
+        T_max=cosine_t_max,  # Number of epochs for one cycle of cosine annealing
+        eta_min=config.LR_SCHEDULER_ETA_MIN,
+    )
+    # Sequential Scheduler: Warmup then Cosine Anneal
+    # scheduler1 runs for WARMUP_EPOCHS, then scheduler2 runs for the rest.
+    scheduler = lr_scheduler.SequentialLR(
+        optimizer,
+        schedulers=[scheduler1, scheduler2],
+        milestones=[config.WARMUP_EPOCHS],
+    )
+    print(
+        f"Using LR scheduler: Warmup ({config.WARMUP_EPOCHS} epochs) then Cosine Annealing (T_max={cosine_t_max}, eta_min={config.LR_SCHEDULER_ETA_MIN})."
+    )
+
     # --- Checkpoint Directory ---
     if not os.path.exists(config.CHECKPOINT_DIR):
         os.makedirs(config.CHECKPOINT_DIR)
@@ -356,6 +403,8 @@ def main():
             model, train_dataloader, criterion, optimizer, device, writer, epoch
         )
         print(f"Epoch {epoch} - Average Training Loss: {avg_train_loss:.4f}")
+        if writer:  # Log learning rate
+            writer.add_scalar("LearningRate", optimizer.param_groups[0]["lr"], epoch)
 
         avg_val_loss = None
         avg_val_iou = None
@@ -367,8 +416,8 @@ def main():
                 val_dataloader,
                 criterion,
                 device,
-                config.CROP_IMG_WIDTH,
-                config.CROP_IMG_HEIGHT,
+                config.IMG_SIZE,
+                config.IMG_SIZE,
                 writer,
                 epoch,
             )
@@ -410,6 +459,9 @@ def main():
                 checkpoint_path,
             )
             print(f"Saved periodic model checkpoint to {checkpoint_path}")
+
+        # Step the scheduler after validation and saving checkpoints
+        scheduler.step()
 
     print("\nTraining finished.")
     if writer:
