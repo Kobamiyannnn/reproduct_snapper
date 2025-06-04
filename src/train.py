@@ -32,7 +32,7 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device, writer, epo
     model.train()
     epoch_loss = 0.0
 
-    scaler = torch.amp.GradScaler(device=device)
+    scaler = torch.amp.GradScaler(device=device)  # AMPの利用を有効化
 
     for i, (images, targets) in enumerate(dataloader):
         images = images.to(device)
