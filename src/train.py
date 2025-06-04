@@ -256,10 +256,11 @@ def main():
 
     # --- TensorBoard Writer ---
     log_dir_name = f"run_{time.strftime('%Y%m%d-%H%M%S')}"
-    writer = SummaryWriter(os.path.join(config.LOG_DIR, log_dir_name))
-    print(
-        f"TensorBoard logs will be saved to: {os.path.join(config.LOG_DIR, log_dir_name)}"
-    )
+    log_full_path = os.path.join(config.LOG_DIR, log_dir_name)
+    if not os.path.exists(log_full_path):
+        os.makedirs(log_full_path)
+    writer = SummaryWriter(log_full_path)
+    print(f"TensorBoard logs will be saved to: {log_full_path}")
 
     # --- Data Loading ---
     if (
@@ -329,15 +330,73 @@ def main():
         val_dataloader = None
         use_validation = False
 
-    # --- Model, Loss, Optimizer ---
-    class Config:
+    # --- Model ---
+    class ConfigModelInit:  # Renamed to avoid conflict if any global Config exists
         IMAGE_SIZE = config.IMG_SIZE
 
     model = BoundingBoxAdjustmentModel(
-        config=Config(),
+        config=ConfigModelInit(),
     ).to(device)
     print("Model initialized.")
 
+    # --- Save Experiment Conditions ---
+    conditions_md_path = os.path.join(log_full_path, "experiment_conditions.md")
+    with open(conditions_md_path, "w") as f:
+        f.write("# Experiment Conditions\n\n")
+        f.write("## Data Settings\n")
+        f.write(
+            f"- COCO_ANNOTATIONS_PATH_TRAIN: `{config.COCO_ANNOTATIONS_PATH_TRAIN}`\n"
+        )
+        f.write(f"- COCO_IMG_DIR_TRAIN: `{config.COCO_IMG_DIR_TRAIN}`\n")
+        f.write(f"- COCO_ANNOTATIONS_PATH_VAL: `{config.COCO_ANNOTATIONS_PATH_VAL}`\n")
+        f.write(f"- COCO_IMG_DIR_VAL: `{config.COCO_IMG_DIR_VAL}`\n\n")
+
+        f.write("## Model Input Settings\n")
+        f.write(f"- IMG_SIZE: {config.IMG_SIZE}\n")
+        f.write(f"- MEAN: {config.MEAN}\n")
+        f.write(f"- STD: {config.STD}\n\n")
+
+        f.write("## Model Architecture Settings (from config)\n")
+        f.write(f"- BASE_MODEL_NAME: `{config.BASE_MODEL_NAME}`\n")
+        f.write(f"- NUM_FEATURES (potentially legacy): {config.NUM_FEATURES}\n")
+        f.write(
+            f"- DECODER_CHANNELS (potentially legacy): {config.DECODER_CHANNELS}\n\n"
+        )
+
+        f.write("## Actual Model Architecture (from models.py implementation)\n")
+        f.write(f"- Backbone: ResNet-50 (using layer3 and layer4 outputs)\n")
+        f.write(
+            f"- Layer3 Feature Dim: {model.features_dim_l3 if hasattr(model, 'features_dim_l3') else 'N/A'}\n"
+        )
+        f.write(
+            f"- Layer4 Feature Dim: {model.features_dim_l4 if hasattr(model, 'features_dim_l4') else 'N/A'}\n"
+        )
+        f.write(f"- Decoder Type: nn.Linear per edge, per scale\n")
+        f.write(
+            f"- Multi-Scale Integration: Averaging predictions from layer3 and layer4 decoders\n\n"
+        )
+
+        f.write("## Training Hyperparameters\n")
+        f.write(f"- LEARNING_RATE: {config.LEARNING_RATE}\n")
+        f.write(f"- EPOCHS: {config.EPOCHS}\n")
+        f.write(f"- BATCH_SIZE: {config.BATCH_SIZE}\n")
+        f.write(f"- OPTIMIZER_TYPE: `{config.OPTIMIZER_TYPE}`\n")
+        f.write(f"- LOSS_FN_TYPE: `{config.LOSS_FN_TYPE}`\n")
+        f.write(f"- WARMUP_EPOCHS: {config.WARMUP_EPOCHS}\n")
+        f.write(f"- LR_SCHEDULER_ETA_MIN: {config.LR_SCHEDULER_ETA_MIN}\n\n")
+
+        f.write("## Jittering and Cropping Settings\n")
+        f.write(f"- CENTER_JITTER_RATIO: {config.CENTER_JITTER_RATIO}\n")
+        f.write(f"- SCALE_JITTER_RATIO: {config.SCALE_JITTER_RATIO}\n")
+        f.write(f"- BUFFER_RATIO: {config.BUFFER_RATIO}\n\n")
+
+        f.write("## Environment Settings\n")
+        f.write(f"- DEVICE: `{device}`\n")  # Use the determined device
+        f.write(f"- NUM_WORKERS: {config.NUM_WORKERS}\n")
+        f.write(f"- RANDOM_SEED: {config.RANDOM_SEED}\n")
+    print(f"Experiment conditions saved to: {conditions_md_path}")
+
+    # --- Loss, Optimizer, Scheduler ---
     if config.LOSS_FN_TYPE == "BCEWithLogitsLoss":
         criterion = torch.nn.BCEWithLogitsLoss()
     else:
