@@ -84,32 +84,32 @@ def validate_one_epoch(
     all_iou_scores = []
     total_samples_for_dev = 0
     sum_edge_dev_metrics = {
-        "avg_top_dev": 0.0,
-        "avg_bottom_dev": 0.0,
-        "avg_left_dev": 0.0,
-        "avg_right_dev": 0.0,
-        "frac_top_dev_le_1px": 0.0,
-        "frac_bottom_dev_le_1px": 0.0,
-        "frac_left_dev_le_1px": 0.0,
-        "frac_right_dev_le_1px": 0.0,
-        "frac_top_dev_le_3px": 0.0,
-        "frac_bottom_dev_le_3px": 0.0,
-        "frac_left_dev_le_3px": 0.0,
-        "frac_right_dev_le_3px": 0.0,
+        "mean_dev_left": 0.0,
+        "mean_dev_top": 0.0,
+        "mean_dev_right": 0.0,
+        "mean_dev_bottom": 0.0,
+        "frac_dev_left_le_1px": 0.0,
+        "frac_dev_top_le_1px": 0.0,
+        "frac_dev_right_le_1px": 0.0,
+        "frac_dev_bottom_le_1px": 0.0,
+        "frac_dev_left_le_3px": 0.0,
+        "frac_dev_top_le_3px": 0.0,
+        "frac_dev_right_le_3px": 0.0,
+        "frac_dev_bottom_le_3px": 0.0,
     }
     sum_corner_dev_metrics = {
-        "avg_l1_top_left": 0.0,
-        "avg_l1_top_right": 0.0,
-        "avg_l1_bottom_left": 0.0,
-        "avg_l1_bottom_right": 0.0,
-        "frac_l1_top_left_le_1px": 0.0,
-        "frac_l1_top_right_le_1px": 0.0,
-        "frac_l1_bottom_left_le_1px": 0.0,
-        "frac_l1_bottom_right_le_1px": 0.0,
-        "frac_l1_top_left_le_3px": 0.0,
-        "frac_l1_top_right_le_3px": 0.0,
-        "frac_l1_bottom_left_le_3px": 0.0,
-        "frac_l1_bottom_right_le_3px": 0.0,
+        "mean_dev_tl": 0.0,
+        "mean_dev_tr": 0.0,
+        "mean_dev_bl": 0.0,
+        "mean_dev_br": 0.0,
+        "frac_dev_tl_le_1px": 0.0,
+        "frac_dev_tr_le_1px": 0.0,
+        "frac_dev_bl_le_1px": 0.0,
+        "frac_dev_br_le_1px": 0.0,
+        "frac_dev_tl_le_3px": 0.0,
+        "frac_dev_tr_le_3px": 0.0,
+        "frac_dev_bl_le_3px": 0.0,
+        "frac_dev_br_le_3px": 0.0,
     }
 
     with torch.no_grad():
@@ -203,7 +203,7 @@ def validate_one_epoch(
                 print(f"        {key}: {metric_val:.4f} px")
             if writer:
                 writer.add_scalar(
-                    f"EdgeDeviance/{key.replace('frac_', 'frac_le_')}",
+                    f"EdgeDeviance/{key}",
                     metric_val,
                     epoch,
                 )
@@ -218,7 +218,7 @@ def validate_one_epoch(
                 print(f"        {key}: {metric_val:.4f} px")
             if writer:
                 writer.add_scalar(
-                    f"CornerDeviance/{key.replace('frac_', 'frac_le_')}",
+                    f"CornerDeviance/{key}",
                     metric_val,
                     epoch,
                 )

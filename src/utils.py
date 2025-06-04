@@ -202,8 +202,12 @@ def calculate_edge_deviance_batch(pred_bboxes, gt_bboxes, thresholds=(1.0, 3.0))
         thresholds: Tuple of pixel thresholds (e.g., (1.0, 3.0))
     Returns:
         A dictionary containing:
-            'mean_dev_left', 'mean_dev_right', 'mean_dev_top', 'mean_dev_bottom': Mean absolute pixel deviance for each edge.
-            'frac_dev_left_thresh1', ..._thresh2: Fraction of left edges within threshold1, threshold2. (Similar for right, top, bottom)
+            'mean_dev_left', 'mean_dev_top', 'mean_dev_right', 'mean_dev_bottom':
+                Mean absolute pixel deviance for each edge (left, top, right, bottom respectively).
+                Lower values indicate more accurate edge placement.
+            'frac_dev_left_le_Xpx', 'frac_dev_top_le_Xpx', 'frac_dev_right_le_Xpx', 'frac_dev_bottom_le_Xpx':
+                Fraction of samples where the respective edge's pixel deviance is less than or equal to X pixels (e.g., 1px, 3px).
+                Higher values (closer to 1.0) indicate better precision for that edge at the given threshold.
     """
     dev_left = torch.abs(pred_bboxes[:, 0] - gt_bboxes[:, 0])
     dev_top = torch.abs(pred_bboxes[:, 1] - gt_bboxes[:, 1])
@@ -218,16 +222,17 @@ def calculate_edge_deviance_batch(pred_bboxes, gt_bboxes, thresholds=(1.0, 3.0))
     }
 
     for i, thresh in enumerate(thresholds):
-        results[f"frac_dev_left_thresh{i + 1}"] = torch.sum(
+        thresh_str = str(int(thresh)) if thresh.is_integer() else str(thresh)
+        results[f"frac_dev_left_le_{thresh_str}px"] = torch.sum(
             dev_left <= thresh
         ).item() / len(dev_left)
-        results[f"frac_dev_top_thresh{i + 1}"] = torch.sum(
+        results[f"frac_dev_top_le_{thresh_str}px"] = torch.sum(
             dev_top <= thresh
         ).item() / len(dev_top)
-        results[f"frac_dev_right_thresh{i + 1}"] = torch.sum(
+        results[f"frac_dev_right_le_{thresh_str}px"] = torch.sum(
             dev_right <= thresh
         ).item() / len(dev_right)
-        results[f"frac_dev_bottom_thresh{i + 1}"] = torch.sum(
+        results[f"frac_dev_bottom_le_{thresh_str}px"] = torch.sum(
             dev_bottom <= thresh
         ).item() / len(dev_bottom)
 
@@ -243,8 +248,13 @@ def calculate_corner_deviance_batch(pred_bboxes, gt_bboxes, thresholds=(1.0, 3.0
         thresholds: Tuple of pixel thresholds.
     Returns:
         A dictionary containing:
-            'mean_dev_tl', 'mean_dev_tr', 'mean_dev_bl', 'mean_dev_br': Mean L1 distance for each corner.
-            'frac_dev_tl_thresh1', ..._thresh2: Fraction of top-left corners within L1 dist threshold1, threshold2. (Similar for other corners)
+            'mean_dev_tl', 'mean_dev_tr', 'mean_dev_bl', 'mean_dev_br':
+                Mean L1 (Manhattan) distance in pixels for each corner (tl: top-left, tr: top-right, bl: bottom-left, br: bottom-right).
+                L1 distance = |pred_x - gt_x| + |pred_y - gt_y|.
+                Lower values indicate more accurate corner placement.
+            'frac_dev_tl_le_Xpx', 'frac_dev_tr_le_Xpx', 'frac_dev_bl_le_Xpx', 'frac_dev_br_le_Xpx':
+                Fraction of samples where the respective corner's L1 distance is less than or equal to X pixels (e.g., 1px, 3px).
+                Higher values (closer to 1.0) indicate better precision for that corner at the given threshold.
     """
     dev_tl_x = torch.abs(pred_bboxes[:, 0] - gt_bboxes[:, 0])
     dev_tl_y = torch.abs(pred_bboxes[:, 1] - gt_bboxes[:, 1])
@@ -270,16 +280,17 @@ def calculate_corner_deviance_batch(pred_bboxes, gt_bboxes, thresholds=(1.0, 3.0
     }
 
     for i, thresh in enumerate(thresholds):
-        results[f"frac_dev_tl_thresh{i + 1}"] = torch.sum(
+        thresh_str = str(int(thresh)) if thresh.is_integer() else str(thresh)
+        results[f"frac_dev_tl_le_{thresh_str}px"] = torch.sum(
             dist_tl <= thresh
         ).item() / len(dist_tl)
-        results[f"frac_dev_tr_thresh{i + 1}"] = torch.sum(
+        results[f"frac_dev_tr_le_{thresh_str}px"] = torch.sum(
             dist_tr <= thresh
         ).item() / len(dist_tr)
-        results[f"frac_dev_bl_thresh{i + 1}"] = torch.sum(
+        results[f"frac_dev_bl_le_{thresh_str}px"] = torch.sum(
             dist_bl <= thresh
         ).item() / len(dist_bl)
-        results[f"frac_dev_br_thresh{i + 1}"] = torch.sum(
+        results[f"frac_dev_br_le_{thresh_str}px"] = torch.sum(
             dist_br <= thresh
         ).item() / len(dist_br)
 
