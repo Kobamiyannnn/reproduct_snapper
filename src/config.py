@@ -25,7 +25,7 @@ DECODER_CHANNELS = [
 
 # --- Training Hyperparameters ---
 LEARNING_RATE = 2e-4
-EPOCHS = 20  # Default: 50
+EPOCHS = 50  # Default: 50
 BATCH_SIZE = 128  # Increased batch size
 OPTIMIZER_TYPE = "Adam"  # "Adam", "SGD", etc.
 LOSS_FN_TYPE = "BCEWithLogitsLoss"
