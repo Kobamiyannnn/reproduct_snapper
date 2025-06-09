@@ -285,16 +285,16 @@ def main():
         )
 
         f.write("## Actual Model Architecture (from models.py implementation)\n")
-        f.write(f"- Backbone: ResNet-50 (using layer3 and layer4 outputs)\n")
+        f.write("- Backbone: ResNet-50 (using layer3 and layer4 outputs)\n")
         f.write(
             f"- Layer3 Feature Dim: {model.features_dim_l3 if hasattr(model, 'features_dim_l3') else 'N/A'}\n"
         )
         f.write(
             f"- Layer4 Feature Dim: {model.features_dim_l4 if hasattr(model, 'features_dim_l4') else 'N/A'}\n"
         )
-        f.write(f"- Decoder Type: nn.Linear per edge, per scale\n")
+        f.write("- Decoder Type: nn.Linear per edge, per scale\n")
         f.write(
-            f"- Multi-Scale Integration: Averaging predictions from layer3 and layer4 decoders\n\n"
+            "- Multi-Scale Integration: Averaging predictions from layer3 and layer4 decoders\n\n"
         )
 
         f.write("## Training Hyperparameters\n")
@@ -402,7 +402,7 @@ def main():
                 epoch,
             )
             avg_val_loss = val_metrics["avg_val_loss"]
-            avg_val_iou = val_metrics["avg_iou"]
+            avg_val_iou = val_metrics["mIoU"]
 
             if avg_val_iou > best_val_iou:
                 best_val_iou = avg_val_iou
