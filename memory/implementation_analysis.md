@@ -182,3 +182,4 @@ Figure 3 に示される Bounding Box Adjustment Model の主要な構成要素�
 - **マルチプロセッシング設定**: CUDA使用時に `mp.set_start_method("spawn", force=True)` を試みる処理が含まれており、`DataLoader` でのワーカプロセスの問題を回避しようとしています。
 
 これらの詳細は、論文やブログの概要レベルの情報だけでは決定できない部分であり、実際のモデル性能や学習の安定性に影響を与える重要な要素です。
+ 
