@@ -368,9 +368,10 @@ def main():
     )
 
     # --- Checkpoint Directory ---
-    if not os.path.exists(config.CHECKPOINT_DIR):
-        os.makedirs(config.CHECKPOINT_DIR)
-        print(f"Created checkpoint directory: {config.CHECKPOINT_DIR}")
+    checkpoint_dir_full_path = os.path.join(config.CHECKPOINT_DIR, log_dir_name)
+    if not os.path.exists(checkpoint_dir_full_path):
+        os.makedirs(checkpoint_dir_full_path)
+        print(f"Created checkpoint directory: {checkpoint_dir_full_path}")
 
     # --- Training Loop ---
     print(f"Starting training for {config.EPOCHS} epochs...")
@@ -407,7 +408,7 @@ def main():
             if avg_val_iou > best_val_iou:
                 best_val_iou = avg_val_iou
                 checkpoint_path = os.path.join(
-                    config.CHECKPOINT_DIR, "best_model_iou.pth"
+                    checkpoint_dir_full_path, "best_model_iou.pth"
                 )
                 torch.save(
                     {
@@ -425,7 +426,7 @@ def main():
 
         if epoch % config.SAVE_EVERY_N_EPOCHS == 0:
             checkpoint_path = os.path.join(
-                config.CHECKPOINT_DIR, f"model_epoch_{epoch}.pth"
+                checkpoint_dir_full_path, f"model_epoch_{epoch}.pth"
             )
             torch.save(
                 {
