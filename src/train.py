@@ -260,6 +260,16 @@ def main():
     ).to(device)
     print("Model initialized.")
 
+    # --- Add Model Graph to TensorBoard ---
+    try:
+        # Create a dummy input with batch size 1 to trace the model graph
+        # This avoids using a full batch from the dataloader, saving memory.
+        dummy_input = torch.randn(1, 3, config.IMG_SIZE, config.IMG_SIZE).to(device)
+        writer.add_graph(model, dummy_input)
+        print("Model graph has been added to TensorBoard.")
+    except Exception as e:
+        print(f"Warning: Could not add model graph to TensorBoard. Error: {e}")
+
     # --- Save Experiment Conditions ---
     conditions_md_path = os.path.join(log_full_path, "experiment_conditions.md")
     with open(conditions_md_path, "w") as f:
