@@ -46,7 +46,8 @@ CHECKPOINT_DIR = "checkpoints/"
 SAVE_EVERY_N_EPOCHS = 5  # Save model every N epochs
 
 # --- Evaluation Settings ---
-# EVAL_IOU_THRESHOLD = 0.5 # Example for some evaluation metrics
+IOU_THRESHOLD = 0.9  # IoU threshold for the 'IoU > X' metric
+DEVIANCE_THRESHOLDS = (1.0, 3.0)  # Pixel deviation thresholds for Edge/Corner accuracy
 
 # --- Environment Settings ---
 DEVICE = "cuda"  # "cuda" if GPU is available, else "cpu"

@@ -1,6 +1,6 @@
 import torch
 import random
-import torchvision.ops.boxes as box_ops  # For box_iou if needed, or implement manually
+# import torchvision.ops.boxes as box_ops  # For box_iou if needed, or implement manually
 
 
 def jitter_bbox(
@@ -193,108 +193,163 @@ def calculate_iou_batch(pred_bboxes, gt_bboxes):
     return iou
 
 
-def calculate_edge_deviance_batch(pred_bboxes, gt_bboxes, thresholds=(1.0, 3.0)):
+def calculate_edge_accuracy_batch(pred_bboxes, gt_bboxes, thresholds=(1.0, 3.0)):
     """
-    Calculates Edge Deviance for a batch.
+    Calculates the percentage of edges within certain pixel deviation thresholds.
+    This metric aligns with the "Edge < Xpx" metric from the Snapper paper.
+
+    For each bounding box, it calculates the proportion of its 4 edges that are
+    within the given deviation threshold. The final metric is the average of these
+    proportions over the entire batch.
+
     Args:
-        pred_bboxes: Tensor (B, 4) of predicted bboxes (x_min, y_min, x_max, y_max)
-        gt_bboxes: Tensor (B, 4) of ground truth bboxes (x_min, y_min, x_max, y_max)
-        thresholds: Tuple of pixel thresholds (e.g., (1.0, 3.0))
+        pred_bboxes: Tensor (B, 4) of predicted bboxes (x_min, y_min, x_max, y_max).
+        gt_bboxes: Tensor (B, 4) of ground truth bboxes (x_min, y_min, x_max, y_max).
+        thresholds: A tuple of pixel deviation thresholds.
+
     Returns:
-        A dictionary containing:
-            'mean_dev_left', 'mean_dev_top', 'mean_dev_right', 'mean_dev_bottom':
-                Mean absolute pixel deviance for each edge (left, top, right, bottom respectively).
-                Lower values indicate more accurate edge placement.
-            'frac_dev_left_le_Xpx', 'frac_dev_top_le_Xpx', 'frac_dev_right_le_Xpx', 'frac_dev_bottom_le_Xpx':
-                Fraction of samples where the respective edge's pixel deviance is less than or equal to X pixels (e.g., 1px, 3px).
-                Higher values (closer to 1.0) indicate better precision for that edge at the given threshold.
+        A dictionary with keys like 'Edge < 1px', 'Edge < 3px', etc., where values
+        are the batch-averaged percentage of edges meeting the threshold.
     """
+    if pred_bboxes.shape[0] == 0:
+        return {f"Edge < {t}px": 0.0 for t in thresholds}
+
+    # Calculate absolute deviations for each of the 4 edges
     dev_left = torch.abs(pred_bboxes[:, 0] - gt_bboxes[:, 0])
     dev_top = torch.abs(pred_bboxes[:, 1] - gt_bboxes[:, 1])
     dev_right = torch.abs(pred_bboxes[:, 2] - gt_bboxes[:, 2])
     dev_bottom = torch.abs(pred_bboxes[:, 3] - gt_bboxes[:, 3])
 
-    results = {
-        "mean_dev_left": torch.mean(dev_left).item(),
-        "mean_dev_top": torch.mean(dev_top).item(),
-        "mean_dev_right": torch.mean(dev_right).item(),
-        "mean_dev_bottom": torch.mean(dev_bottom).item(),
-    }
+    # Stack deviations for easier processing: (B, 4)
+    edge_deviations = torch.stack([dev_left, dev_top, dev_right, dev_bottom], dim=1)
 
-    for i, thresh in enumerate(thresholds):
-        thresh_str = str(int(thresh)) if thresh.is_integer() else str(thresh)
-        results[f"frac_dev_left_le_{thresh_str}px"] = torch.sum(
-            dev_left <= thresh
-        ).item() / len(dev_left)
-        results[f"frac_dev_top_le_{thresh_str}px"] = torch.sum(
-            dev_top <= thresh
-        ).item() / len(dev_top)
-        results[f"frac_dev_right_le_{thresh_str}px"] = torch.sum(
-            dev_right <= thresh
-        ).item() / len(dev_right)
-        results[f"frac_dev_bottom_le_{thresh_str}px"] = torch.sum(
-            dev_bottom <= thresh
-        ).item() / len(dev_bottom)
+    results = {}
+    for thresh in thresholds:
+        # Check which edges are within the threshold: (B, 4) boolean tensor
+        within_thresh = edge_deviations <= thresh
+        # Calculate proportion of correct edges per box: (B,)
+        proportion_per_box = torch.mean(within_thresh.float(), dim=1)
+        # Average the proportions over the batch
+        batch_accuracy = torch.mean(proportion_per_box).item()
+        results[f"Edge < {int(thresh)}px"] = batch_accuracy
 
     return results
 
 
-def calculate_corner_deviance_batch(pred_bboxes, gt_bboxes, thresholds=(1.0, 3.0)):
+def calculate_corner_accuracy_batch(pred_bboxes, gt_bboxes, thresholds=(1.0, 3.0)):
     """
-    Calculates Corner Deviance for a batch.
+    Calculates the percentage of corners within certain pixel deviation thresholds.
+    This metric aligns with the "Corner < Xpx" metric from the Snapper paper.
+
+    For each bounding box, it calculates the proportion of its 4 corners that are
+    within the given Euclidean distance threshold. The final metric is the average of
+    these proportions over the entire batch.
+
     Args:
-        pred_bboxes: Tensor (B, 4) of predicted bboxes (x_min, y_min, x_max, y_max)
-        gt_bboxes: Tensor (B, 4) of ground truth bboxes (x_min, y_min, x_max, y_max)
-        thresholds: Tuple of pixel thresholds.
+        pred_bboxes: Tensor (B, 4) of predicted bboxes (x_min, y_min, x_max, y_max).
+        gt_bboxes: Tensor (B, 4) of ground truth bboxes (x_min, y_min, x_max, y_max).
+        thresholds: A tuple of pixel deviation thresholds.
+
     Returns:
-        A dictionary containing:
-            'mean_dev_tl', 'mean_dev_tr', 'mean_dev_bl', 'mean_dev_br':
-                Mean L1 (Manhattan) distance in pixels for each corner (tl: top-left, tr: top-right, bl: bottom-left, br: bottom-right).
-                L1 distance = |pred_x - gt_x| + |pred_y - gt_y|.
-                Lower values indicate more accurate corner placement.
-            'frac_dev_tl_le_Xpx', 'frac_dev_tr_le_Xpx', 'frac_dev_bl_le_Xpx', 'frac_dev_br_le_Xpx':
-                Fraction of samples where the respective corner's L1 distance is less than or equal to X pixels (e.g., 1px, 3px).
-                Higher values (closer to 1.0) indicate better precision for that corner at the given threshold.
+        A dictionary with keys like 'Corner < 1px', 'Corner < 3px', etc., where values
+        are the batch-averaged percentage of corners meeting the threshold.
     """
-    dev_tl_x = torch.abs(pred_bboxes[:, 0] - gt_bboxes[:, 0])
-    dev_tl_y = torch.abs(pred_bboxes[:, 1] - gt_bboxes[:, 1])
-    dist_tl = dev_tl_x + dev_tl_y
+    if pred_bboxes.shape[0] == 0:
+        return {f"Corner < {t}px": 0.0 for t in thresholds}
 
-    dev_tr_x = torch.abs(pred_bboxes[:, 2] - gt_bboxes[:, 2])
-    dev_tr_y = torch.abs(pred_bboxes[:, 1] - gt_bboxes[:, 1])
-    dist_tr = dev_tr_x + dev_tr_y
+    # Extract corner coordinates
+    pred_corners = torch.stack(
+        [
+            pred_bboxes[:, 0],
+            pred_bboxes[:, 1],  # Top-left
+            pred_bboxes[:, 2],
+            pred_bboxes[:, 1],  # Top-right
+            pred_bboxes[:, 0],
+            pred_bboxes[:, 3],  # Bottom-left
+            pred_bboxes[:, 2],
+            pred_bboxes[:, 3],  # Bottom-right
+        ],
+        dim=1,
+    ).view(-1, 4, 2)  # (B, 4, 2)
 
-    dev_bl_x = torch.abs(pred_bboxes[:, 0] - gt_bboxes[:, 0])
-    dev_bl_y = torch.abs(pred_bboxes[:, 3] - gt_bboxes[:, 3])
-    dist_bl = dev_bl_x + dev_bl_y
+    gt_corners = torch.stack(
+        [
+            gt_bboxes[:, 0],
+            gt_bboxes[:, 1],
+            gt_bboxes[:, 2],
+            gt_bboxes[:, 1],
+            gt_bboxes[:, 0],
+            gt_bboxes[:, 3],
+            gt_bboxes[:, 2],
+            gt_bboxes[:, 3],
+        ],
+        dim=1,
+    ).view(-1, 4, 2)  # (B, 4, 2)
 
-    dev_br_x = torch.abs(pred_bboxes[:, 2] - gt_bboxes[:, 2])
-    dev_br_y = torch.abs(pred_bboxes[:, 3] - gt_bboxes[:, 3])
-    dist_br = dev_br_x + dev_br_y
+    # Calculate Euclidean distance for each corner: (B, 4)
+    corner_deviations = torch.sqrt(torch.sum((pred_corners - gt_corners) ** 2, dim=2))
 
-    results = {
-        "mean_dev_tl": torch.mean(dist_tl).item(),
-        "mean_dev_tr": torch.mean(dist_tr).item(),
-        "mean_dev_bl": torch.mean(dist_bl).item(),
-        "mean_dev_br": torch.mean(dist_br).item(),
-    }
-
-    for i, thresh in enumerate(thresholds):
-        thresh_str = str(int(thresh)) if thresh.is_integer() else str(thresh)
-        results[f"frac_dev_tl_le_{thresh_str}px"] = torch.sum(
-            dist_tl <= thresh
-        ).item() / len(dist_tl)
-        results[f"frac_dev_tr_le_{thresh_str}px"] = torch.sum(
-            dist_tr <= thresh
-        ).item() / len(dist_tr)
-        results[f"frac_dev_bl_le_{thresh_str}px"] = torch.sum(
-            dist_bl <= thresh
-        ).item() / len(dist_bl)
-        results[f"frac_dev_br_le_{thresh_str}px"] = torch.sum(
-            dist_br <= thresh
-        ).item() / len(dist_br)
+    results = {}
+    for thresh in thresholds:
+        # Check which corners are within the threshold: (B, 4) boolean tensor
+        within_thresh = corner_deviations <= thresh
+        # Calculate proportion of correct corners per box: (B,)
+        proportion_per_box = torch.mean(within_thresh.float(), dim=1)
+        # Average the proportions over the batch
+        batch_accuracy = torch.mean(proportion_per_box).item()
+        results[f"Corner < {int(thresh)}px"] = batch_accuracy
 
     return results
+
+
+def compute_metrics(
+    pred_bboxes, gt_bboxes, iou_threshold=0.9, deviance_thresholds=(1.0, 3.0)
+):
+    """
+    Computes a set of evaluation metrics for a batch of predictions.
+    Args:
+        pred_bboxes: Tensor (B, 4) of predicted bboxes (x_min, y_min, x_max, y_max).
+        gt_bboxes: Tensor (B, 4) of ground truth bboxes (x_min, y_min, x_max, y_max).
+        iou_threshold: The IoU threshold to consider a prediction "good".
+        deviance_thresholds: Tuple of pixel thresholds for edge/corner accuracy.
+    Returns:
+        A dictionary containing all computed metrics.
+    """
+    if pred_bboxes.shape[0] == 0:
+        metrics = {
+            "mIoU": 0.0,
+            f"IoU > {iou_threshold}": 0.0,
+        }
+        edge_acc = calculate_edge_accuracy_batch(
+            pred_bboxes, gt_bboxes, deviance_thresholds
+        )
+        corner_acc = calculate_corner_accuracy_batch(
+            pred_bboxes, gt_bboxes, deviance_thresholds
+        )
+        metrics.update(edge_acc)
+        metrics.update(corner_acc)
+        return metrics
+
+    iou_values = calculate_iou_batch(pred_bboxes, gt_bboxes)
+
+    metrics = {
+        "mIoU": torch.mean(iou_values).item(),
+        f"IoU > {iou_threshold}": torch.mean(
+            (iou_values > iou_threshold).float()
+        ).item(),
+    }
+
+    edge_accuracy = calculate_edge_accuracy_batch(
+        pred_bboxes, gt_bboxes, deviance_thresholds
+    )
+    metrics.update(edge_accuracy)
+
+    corner_accuracy = calculate_corner_accuracy_batch(
+        pred_bboxes, gt_bboxes, deviance_thresholds
+    )
+    metrics.update(corner_accuracy)
+
+    return metrics
 
 
 # You might add other utility functions here later, e.g., for IoU calculation

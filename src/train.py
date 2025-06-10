@@ -80,44 +80,22 @@ def validate_one_epoch(
 ):
     model.eval()
     epoch_loss = 0.0
-
-    all_iou_scores = []
-    total_samples_for_dev = 0
-    sum_edge_dev_metrics = {
-        "mean_dev_left": 0.0,
-        "mean_dev_top": 0.0,
-        "mean_dev_right": 0.0,
-        "mean_dev_bottom": 0.0,
-        "frac_dev_left_le_1px": 0.0,
-        "frac_dev_top_le_1px": 0.0,
-        "frac_dev_right_le_1px": 0.0,
-        "frac_dev_bottom_le_1px": 0.0,
-        "frac_dev_left_le_3px": 0.0,
-        "frac_dev_top_le_3px": 0.0,
-        "frac_dev_right_le_3px": 0.0,
-        "frac_dev_bottom_le_3px": 0.0,
-    }
-    sum_corner_dev_metrics = {
-        "mean_dev_tl": 0.0,
-        "mean_dev_tr": 0.0,
-        "mean_dev_bl": 0.0,
-        "mean_dev_br": 0.0,
-        "frac_dev_tl_le_1px": 0.0,
-        "frac_dev_tr_le_1px": 0.0,
-        "frac_dev_bl_le_1px": 0.0,
-        "frac_dev_br_le_1px": 0.0,
-        "frac_dev_tl_le_3px": 0.0,
-        "frac_dev_tr_le_3px": 0.0,
-        "frac_dev_bl_le_3px": 0.0,
-        "frac_dev_br_le_3px": 0.0,
-    }
+    all_metrics = []
 
     with torch.no_grad():
         for i, (images, targets_dict) in enumerate(dataloader):
             images = images.to(device)
 
+            # Forward pass
             preds_top, preds_bottom, preds_left, preds_right = model(images)
+            predictions_logits = {
+                "top": preds_top,
+                "bottom": preds_bottom,
+                "left": preds_left,
+                "right": preds_right,
+            }
 
+            # Loss calculation
             loss_top = criterion(preds_top, targets_dict["top"].to(device).float())
             loss_bottom = criterion(
                 preds_bottom, targets_dict["bottom"].to(device).float()
@@ -129,112 +107,55 @@ def validate_one_epoch(
             total_loss = loss_top + loss_bottom + loss_left + loss_right
             epoch_loss += total_loss.item()
 
-            if (i + 1) % 50 == 0:
+            if (i + 1) % 100 == 0:
                 print(
-                    f"    Batch [{i + 1}/{len(dataloader)}], Val Batch Loss: {total_loss.item():.4f}"
+                    f"    Validation Batch [{i + 1}/{len(dataloader)}], Batch Loss: {total_loss.item():.4f}"
                 )
 
+            # Convert predictions and targets to bounding boxes
             pred_bboxes_batch = utils.predictions_to_bboxes(
-                {
-                    "top": preds_top,
-                    "bottom": preds_bottom,
-                    "left": preds_left,
-                    "right": preds_right,
-                },
-                image_width,
-                image_height,
-                device,
+                predictions_logits, image_width, image_height, device
             )
             gt_bboxes_batch = utils.get_gt_bboxes_from_targets(
                 targets_dict, image_width, image_height, device
             )
 
-            iou_batch = utils.calculate_iou_batch(pred_bboxes_batch, gt_bboxes_batch)
-            all_iou_scores.extend(iou_batch.cpu().tolist())
-
-            edge_dev_batch_results = utils.calculate_edge_deviance_batch(
-                pred_bboxes_batch, gt_bboxes_batch
+            # Compute all metrics for the batch
+            batch_metrics = utils.compute_metrics(
+                pred_bboxes_batch,
+                gt_bboxes_batch,
+                iou_threshold=config.IOU_THRESHOLD,
+                deviance_thresholds=config.DEVIANCE_THRESHOLDS,
             )
-            for key, value in edge_dev_batch_results.items():
-                if "frac" in key:
-                    num_within_thresh = value * pred_bboxes_batch.size(0)
-                    sum_edge_dev_metrics[key] = (
-                        sum_edge_dev_metrics.get(key, 0) + num_within_thresh
-                    )
-                else:
-                    sum_edge_dev_metrics[key] = sum_edge_dev_metrics.get(
-                        key, 0
-                    ) + value * pred_bboxes_batch.size(0)
+            all_metrics.append(batch_metrics)
 
-            corner_dev_batch_results = utils.calculate_corner_deviance_batch(
-                pred_bboxes_batch, gt_bboxes_batch
-            )
-            for key, value in corner_dev_batch_results.items():
-                if "frac" in key:
-                    num_within_thresh = value * pred_bboxes_batch.size(0)
-                    sum_corner_dev_metrics[key] = (
-                        sum_corner_dev_metrics.get(key, 0) + num_within_thresh
-                    )
-                else:
-                    sum_corner_dev_metrics[key] = sum_corner_dev_metrics.get(
-                        key, 0
-                    ) + value * pred_bboxes_batch.size(0)
-
-            total_samples_for_dev += pred_bboxes_batch.size(0)
-
+    # --- Aggregate and log metrics for the epoch ---
     avg_epoch_loss = epoch_loss / len(dataloader)
-    avg_iou = np.mean(all_iou_scores) if all_iou_scores else 0.0
 
-    print("\n    --- Validation Summary ---")
-    print(f"    Average Validation Loss: {avg_epoch_loss:.4f}")
-    print(f"    Average IoU: {avg_iou:.4f}")
+    # Average metrics over all batches
+    # Exclude non-numeric or irrelevant keys if any before averaging
+    avg_metrics = {
+        key: np.mean([m[key] for m in all_metrics]) for key in all_metrics[0]
+    }
+
+    print("\n--- Validation Summary ---")
+    print(f"  Average Validation Loss: {avg_epoch_loss:.4f}")
+    for key, value in avg_metrics.items():
+        print(f"  {key}: {value:.4f}")
+    print("--------------------------\n")
 
     if writer:
         writer.add_scalar("Loss/validation_epoch", avg_epoch_loss, epoch)
-        writer.add_scalar("IoU/validation", avg_iou, epoch)
+        for key, value in avg_metrics.items():
+            # Sanitize key for TensorBoard (e.g., 'IoU > 0.9' -> 'IoU_gt_0.9')
+            tb_key = key.replace(" > ", "_gt_").replace(" < ", "_lt_").replace("px", "")
+            writer.add_scalar(f"Metrics/{tb_key}", value, epoch)
 
-    print("    Edge Deviance:")
-    if total_samples_for_dev > 0:
-        for key, summed_value in sum_edge_dev_metrics.items():
-            metric_val = summed_value / total_samples_for_dev
-            if "frac" in key:
-                print(f"        {key}: {metric_val:.4f}")
-            else:
-                print(f"        {key}: {metric_val:.4f} px")
-            if writer:
-                writer.add_scalar(
-                    f"EdgeDeviance/{key}",
-                    metric_val,
-                    epoch,
-                )
+    # Return a dictionary of final averaged metrics
+    final_metrics = {"avg_val_loss": avg_epoch_loss}
+    final_metrics.update(avg_metrics)
 
-    print("    Corner Deviance:")
-    if total_samples_for_dev > 0:
-        for key, summed_value in sum_corner_dev_metrics.items():
-            metric_val = summed_value / total_samples_for_dev
-            if "frac" in key:
-                print(f"        {key}: {metric_val:.4f}")
-            else:
-                print(f"        {key}: {metric_val:.4f} px")
-            if writer:
-                writer.add_scalar(
-                    f"CornerDeviance/{key}",
-                    metric_val,
-                    epoch,
-                )
-    print("    ------------------------")
-
-    metrics = {
-        "avg_val_loss": avg_epoch_loss,
-        "avg_iou": avg_iou,
-    }
-    if total_samples_for_dev > 0:
-        for key, summed_value in sum_edge_dev_metrics.items():
-            metrics[f"edge_{key}"] = summed_value / total_samples_for_dev
-        for key, summed_value in sum_corner_dev_metrics.items():
-            metrics[f"corner_{key}"] = summed_value / total_samples_for_dev
-
-    return metrics
+    return final_metrics
 
 
 def main():
@@ -364,16 +285,16 @@ def main():
         )
 
         f.write("## Actual Model Architecture (from models.py implementation)\n")
-        f.write(f"- Backbone: ResNet-50 (using layer3 and layer4 outputs)\n")
+        f.write("- Backbone: ResNet-50 (using layer3 and layer4 outputs)\n")
         f.write(
             f"- Layer3 Feature Dim: {model.features_dim_l3 if hasattr(model, 'features_dim_l3') else 'N/A'}\n"
         )
         f.write(
             f"- Layer4 Feature Dim: {model.features_dim_l4 if hasattr(model, 'features_dim_l4') else 'N/A'}\n"
         )
-        f.write(f"- Decoder Type: nn.Linear per edge, per scale\n")
+        f.write("- Decoder Type: nn.Linear per edge, per scale\n")
         f.write(
-            f"- Multi-Scale Integration: Averaging predictions from layer3 and layer4 decoders\n\n"
+            "- Multi-Scale Integration: Averaging predictions from layer3 and layer4 decoders\n\n"
         )
 
         f.write("## Training Hyperparameters\n")
@@ -447,9 +368,10 @@ def main():
     )
 
     # --- Checkpoint Directory ---
-    if not os.path.exists(config.CHECKPOINT_DIR):
-        os.makedirs(config.CHECKPOINT_DIR)
-        print(f"Created checkpoint directory: {config.CHECKPOINT_DIR}")
+    checkpoint_dir_full_path = os.path.join(config.CHECKPOINT_DIR, log_dir_name)
+    if not os.path.exists(checkpoint_dir_full_path):
+        os.makedirs(checkpoint_dir_full_path)
+        print(f"Created checkpoint directory: {checkpoint_dir_full_path}")
 
     # --- Training Loop ---
     print(f"Starting training for {config.EPOCHS} epochs...")
@@ -481,18 +403,19 @@ def main():
                 epoch,
             )
             avg_val_loss = val_metrics["avg_val_loss"]
-            avg_val_iou = val_metrics["avg_iou"]
+            avg_val_iou = val_metrics["mIoU"]
 
             if avg_val_iou > best_val_iou:
                 best_val_iou = avg_val_iou
                 checkpoint_path = os.path.join(
-                    config.CHECKPOINT_DIR, "best_model_iou.pth"
+                    checkpoint_dir_full_path, "best_model_iou.pth"
                 )
                 torch.save(
                     {
                         "epoch": epoch,
                         "model_state_dict": model.state_dict(),
                         "optimizer_state_dict": optimizer.state_dict(),
+                        "scheduler_state_dict": scheduler.state_dict(),
                         "loss": avg_val_loss,
                         "iou": avg_val_iou,
                     },
@@ -504,13 +427,14 @@ def main():
 
         if epoch % config.SAVE_EVERY_N_EPOCHS == 0:
             checkpoint_path = os.path.join(
-                config.CHECKPOINT_DIR, f"model_epoch_{epoch}.pth"
+                checkpoint_dir_full_path, f"model_epoch_{epoch}.pth"
             )
             torch.save(
                 {
                     "epoch": epoch,
                     "model_state_dict": model.state_dict(),
                     "optimizer_state_dict": optimizer.state_dict(),
+                    "scheduler_state_dict": scheduler.state_dict(),
                     "train_loss": avg_train_loss,
                     "val_loss": avg_val_loss if avg_val_loss is not None else -1,
                     "val_iou": avg_val_iou if avg_val_iou is not None else -1,
