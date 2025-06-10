@@ -1,4 +1,5 @@
 # src/resume_train.py
+import warnings
 import os
 import torch
 import torch.optim as optim
@@ -14,6 +15,13 @@ import config
 from models import BoundingBoxAdjustmentModel
 from dataset import CocoAdjustmentDataset
 from train import seed_everything, train_one_epoch, validate_one_epoch
+
+# Filter the specific UserWarning from PyTorch's LR scheduler
+warnings.filterwarnings(
+    "ignore",
+    category=UserWarning,
+    message="The epoch parameter in `scheduler.step()` was not necessary and is being deprecated where possible.",
+)
 
 
 def load_checkpoint(checkpoint_path, model, optimizer, scheduler=None):

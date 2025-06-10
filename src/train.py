@@ -9,6 +9,7 @@ import torch.multiprocessing as mp
 from torch.utils.tensorboard import SummaryWriter
 import time
 import torch.optim.lr_scheduler as lr_scheduler
+import warnings
 
 # Assuming config.py, models.py, dataset.py, utils.py are in the same src directory
 # or PYTHONPATH is correctly set.
@@ -16,6 +17,13 @@ import config
 from models import BoundingBoxAdjustmentModel
 from dataset import CocoAdjustmentDataset
 import utils  # Ensure utils is imported
+
+# Filter the specific UserWarning from PyTorch's LR scheduler
+warnings.filterwarnings(
+    "ignore",
+    category=UserWarning,
+    message="The epoch parameter in `scheduler.step()` was not necessary and is being deprecated where possible.",
+)
 
 
 def seed_everything(seed):
