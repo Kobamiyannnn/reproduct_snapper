@@ -1,0 +1,104 @@
+{
+  "validation_metrics": {
+    "human_rough_vs_clean": {
+      "mIoU": 0.8414185643196106,
+      "IoU > 0.9": 0.18370898067951202,
+      "Edge < 1px": 0.20967347919940948,
+      "Edge < 3px": 0.27470704913139343,
+      "Corner < 1px": 0.049101438373327255,
+      "Corner < 3px": 0.07838286459445953
+    },
+    "clean_vs_human_rough": {
+      "mIoU": 0.8414185643196106,
+      "IoU > 0.9": 0.18370898067951202,
+      "Edge < 1px": 0.20967347919940948,
+      "Edge < 3px": 0.27470704913139343,
+      "Corner < 1px": 0.049101438373327255,
+      "Corner < 3px": 0.07838286459445953
+    }
+  },
+  "bbox_statistics": {
+    "area": {
+      "clean_annotation": {
+        "mean": 40875.721513825076,
+        "std": 2206.4029805479295,
+        "min": 19488,
+        "max": 49729
+      },
+      "human_rough_annotation": {
+        "mean": 39819.07041679128,
+        "std": 3717.83756645076,
+        "min": 15196,
+        "max": 49729
+      }
+    },
+    "width": {
+      "clean_annotation": {
+        "mean": 202.07022647562601,
+        "std": 6.7567619669410055
+      },
+      "human_rough_annotation": {
+        "mean": 199.4012397705337,
+        "std": 12.420573358163125
+      }
+    },
+    "height": {
+      "clean_annotation": {
+        "mean": 202.18514994154592,
+        "std": 5.916034123081811
+      },
+      "human_rough_annotation": {
+        "mean": 199.55167069954595,
+        "std": 11.859351577438543
+      }
+    },
+    "center": {
+      "x": {
+        "clean_annotation": {
+          "mean": 111.9835376960931,
+          "std": 3.693479772498745
+        },
+        "human_rough_annotation": {
+          "mean": 110.37237976128979,
+          "std": 9.913259171049143
+        }
+      },
+      "y": {
+        "clean_annotation": {
+          "mean": 112.11603817188222,
+          "std": 3.2509009949697587
+        },
+        "human_rough_annotation": {
+          "mean": 110.84347897012044,
+          "std": 9.857963176154035
+        }
+      }
+    }
+  },
+  "annotation_quality": {
+    "center_deviation": {
+      "mean": 12.782667111706294,
+      "std": 6.925684284902746,
+      "median": 12.349089035228468,
+      "percentile_95": 23.04886114323222
+    },
+    "size_ratio": {
+      "mean": 0.973922622907614,
+      "std": 0.07221643626628724,
+      "median": 0.9724379473123191,
+      "percentile_95": 1.0935960591133005
+    }
+  },
+  "sample_count": 36781,
+  "dataset_config": {
+    "center_jitter_ratio": 0.1,
+    "scale_jitter_ratio": 0.1,
+    "buffer_ratio": 1.1,
+    "img_size": 224,
+    "iou_threshold": 0.9,
+    "deviance_thresholds": [
+      1.0,
+      3.0
+    ]
+  }
+}
