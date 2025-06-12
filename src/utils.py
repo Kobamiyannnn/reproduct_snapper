@@ -119,10 +119,10 @@ def predictions_to_bboxes(predictions_logits, image_width, image_height, device=
     Returns:
         Tensor of shape (B, 4) with (x_min, y_min, x_max, y_max) for each prediction in the batch.
     """
-    pred_top_probs = torch.sigmoid(predictions_logits["top"])  # (B, H)
-    pred_bottom_probs = torch.sigmoid(predictions_logits["bottom"])  # (B, H)
-    pred_left_probs = torch.sigmoid(predictions_logits["left"])  # (B, W)
-    pred_right_probs = torch.sigmoid(predictions_logits["right"])  # (B, W)
+    pred_top_probs = torch.sigmoid(predictions_logits[0])  # (B, H)
+    pred_bottom_probs = torch.sigmoid(predictions_logits[1])  # (B, H)
+    pred_left_probs = torch.sigmoid(predictions_logits[2])  # (B, W)
+    pred_right_probs = torch.sigmoid(predictions_logits[3])  # (B, W)
 
     pred_y_min = torch.argmax(pred_top_probs, dim=1)  # (B,)
     pred_y_max = torch.argmax(pred_bottom_probs, dim=1)  # (B,)

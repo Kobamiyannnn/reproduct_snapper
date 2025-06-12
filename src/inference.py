@@ -9,24 +9,15 @@ from models import BoundingBoxAdjustmentModel
 from utils import predictions_to_bboxes
 import config as cfg  # デフォルト設定
 
+class ConfigModelInit:  # Renamed to avoid conflict if any global Config exists
+        IMAGE_SIZE = 224
 
 def load_model(model_path, device):
     """学習済みモデルをロードする"""
     # configからモデルパラメータを読み込む想定だが、現状モデル保存時に構造も保存しているため、
     # 直接ロードできる。より柔軟にするにはconfigからモデル構造を決定する。
     model = BoundingBoxAdjustmentModel(
-        image_height=cfg.IMG_SIZE[0]
-        if isinstance(cfg.IMG_SIZE, tuple)
-        else cfg.IMG_SIZE,
-        image_width=cfg.IMG_SIZE[1]
-        if isinstance(cfg.IMG_SIZE, tuple)
-        else cfg.IMG_SIZE,
-        resnet_out_channels=cfg.NUM_FEATURES,
-        # base_model_name, decoder_channels, num_output_coords は現在のモデル定義では使用されていません。
-        # これらは学習時の設定であり、モデル構造自体は保存された state_dict から復元されるか、
-        # モデルクラス内で固定されているため、推論時のモデル初期化では不要です。
-        # もしこれらのパラメータに基づいて動的にモデル構造が変わる場合は、
-        # BoundingBoxAdjustmentModel の __init__ を修正する必要があります。
+        config=ConfigModelInit(),
     )
     checkpoint = torch.load(model_path, map_location=device, weights_only=False)
     model.load_state_dict(checkpoint["model_state_dict"])
@@ -154,7 +145,7 @@ def postprocess_predictions(predictions_logits, transform_info, img_size):
         predictions_logits,
         image_width=img_size,
         image_height=img_size,
-        device=predictions_logits["top"].device,  # ロジットと同じデバイスを使用
+        device="cuda",  # ロジットと同じデバイスを使用
     )  # (N, 4)
     pred_bbox_on_resized_patch = (
         pred_bboxes_on_resized_patch.squeeze(0).cpu().numpy()
@@ -200,7 +191,7 @@ def visualize_results(
         (r_x, r_y),
         (r_x + r_w, r_y + r_h),
         (0, 255, 0),  # Green
-        2,
+        1,
     )
     cv2.putText(
         image,
@@ -219,7 +210,7 @@ def visualize_results(
         (a_x1, a_y1),
         (a_x2, a_y2),
         (0, 0, 255),  # Red
-        2,
+        1,
     )
     cv2.putText(
         image,
