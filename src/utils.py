@@ -45,6 +45,8 @@ def jitter_bbox(
     new_center_y = center_y + dy
 
     # 2. Rescale dimensions
+    # TODO: "rescales the dimensions of the bounding box by a randomly sampled ratio between 0.9 and 1.1"という記述があるが、
+    # `rescale_factor_w`と`rescale_factor_h`が異なっており、原論文より厳しい前処理設計となっている可能性がある。
     rescale_factor_w = random.uniform(
         scale_jitter_ratio_range[0], scale_jitter_ratio_range[1]
     )
